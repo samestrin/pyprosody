@@ -1,0 +1,533 @@
+# PyProsody Detailed Implementation Plan
+
+## Requirements & Research
+
+- [x] **Define Requirements & Research**
+  - [x] **Gather Functional Requirements**
+      - [x] Document input specifications:
+          - Text file input:
+              - Format: Plain text (.txt) file
+              - Content: Story or narrative text
+              - Encoding: UTF-8
+              - Size limitations: TBD based on performance testing
+          - Optional model parameter:
+              - Type: String identifier
+              - Default: "default" or "base"
+              - Supported values: List of available emotion analysis models
+      - [x] Outline expected outputs:
+          - Segmented text:
+              - Paragraphs
+              - Sentences
+              - Phrases (for granular emotion analysis)
+          - Emotion profiles:
+              - Format: JSON structure
+              - Per segment emotion scores:
+                  - Basic sentiment (positive/negative/neutral)
+                  - Complex emotions (joy, sadness, anger, etc.)
+                  - Confidence scores
+                  - Sarcasm/irony indicators
+          - Audio file:
+              - Format: WAV or MP3
+              - Sample rate: 44.1kHz (CD quality)
+              - Prosody modifications:
+                  - Speed variations
+                  - Pitch adjustments
+                  - Volume modulation
+                  - Emotional emphasis markers
+      - [x] Define performance targets for processing long texts:
+          - Processing time: < 30 seconds per 1000 words
+          - Maximum input size: 10,000 words initially
+          - Batch processing capability for longer texts
+          - Memory usage: < 4GB during peak processing
+      - [x] Establish criteria for accuracy of emotion detection:
+          - Basic sentiment accuracy: > 85%
+          - Complex emotion detection accuracy: > 75%
+          - Sarcasm/irony detection accuracy: > 70%
+          - False positive rate for emotional changes: < 15%
+          - Minimum confidence threshold: 0.6 for emotion assignments
+      - [x] Identify constraints for local AI usage:
+          - Memory constraints:
+              - Maximum model size: 1GB per model
+              - Total runtime memory: < 8GB
+          - Speed requirements:
+              - Model loading time: < 5 seconds
+              - Inference time: < 100ms per sentence
+          - Hardware compatibility:
+              - Minimum CPU: 4 cores
+              - Optional GPU support
+              - Minimum disk space: 5GB for models and application
+  - [x] **Research Local AI Models for Emotion Analysis**
+      - [x] List candidate models:
+          - Transformer-based models:
+              - DistilBERT-base-uncased-finetuned-sst-2-english (2.5MB)
+                  - Optimized for binary sentiment
+                  - Fast inference time
+                  - Good balance of accuracy vs size
+              - RoBERTa-base-go-emotions (480MB)
+                  - Supports 28 emotion categories
+                  - Higher accuracy for complex emotions
+                  - Requires more computational resources
+              - BERT-base-multilingual-uncased-sentiment (680MB)
+                  - 5-class sentiment classification
+                  - Good for nuanced sentiment levels
+          - Lightweight alternatives:
+              - FastAI-sentiment (125MB)
+              - TinyBERT-sst2 (60MB)
+      - [x] Evaluate sentiment dictionaries:
+          - AFINN:
+              - 2477 words with scores from -5 to +5
+              - Lightweight (< 1MB)
+              - Easy to integrate
+              - Good for basic sentiment
+          - SentiWordNet:
+              - 117,659 synsets
+              - Provides pos/neg/obj scores
+              - Better coverage
+              - Requires WordNet integration
+          - NRC Emotion Lexicon:
+              - 8 basic emotions
+              - 14,182 words
+              - Multiple languages support
+      - [x] Research sarcasm/irony detection approaches:
+          - Rule-based heuristics:
+              - Punctuation patterns (!?, ...)
+              - Emoji/emoticon analysis
+              - Contrast detection between segments
+          - Statistical approaches:
+              - N-gram analysis
+              - Context window comparison
+              - Sentiment flip detection
+          - Hybrid approach recommendation:
+              - Combine lexical patterns
+              - Use contextual embeddings
+              - Apply confidence thresholds
+  - [x] **Evaluate Local TTS Engines**
+      - [x] Identify TTS engines with fine-grained prosody control:
+          - Coqui TTS:
+              - Open-source, fully local
+              - Multiple voice models available
+              - Supports YAML-based configuration
+              - Models:
+                  - FastSpeech2 (300MB)
+                  - Tacotron2 (450MB)
+                  - VITS (180MB)
+                  - YourTTS (240MB)
+          - Mozilla TTS:
+              - Lightweight implementation
+              - Good documentation
+              - Models:
+                  - Tacotron2-DDC (120MB)
+                  - FastSpeech2 (180MB)
+          - Glow-TTS:
+              - Fast inference
+              - Parallel generation
+              - Smaller footprint (140MB)
+      - [x] Research prosody parameter control:
+          - Speed control:
+              - Duration scaling factors
+              - Phoneme timing adjustment
+              - Speaking rate modification
+          - Pitch manipulation:
+              - F0 contour modification
+              - Pitch range scaling
+              - Emotion-based pitch shifts
+          - Volume control:
+              - Amplitude scaling
+              - Energy level adjustment
+              - Stress-based emphasis
+          - Additional controls:
+              - Phoneme-level timing
+              - Pause insertion/duration
+              - Voice quality parameters
+  - [x] **Review Available Python Libraries**
+      - [x] **Review Available Python Libraries**
+          - [x] List libraries for text processing:
+              - NLTK:
+                  - Comprehensive text processing toolkit
+                  - Features needed:
+                      - Sentence tokenization
+                      - Word tokenization
+                      - Part-of-speech tagging
+                      - Named entity recognition
+                  - Size: ~10MB (core)
+                  - Dependencies: minimal
+              - spaCy:
+                  - Industrial-strength NLP
+                  - Features needed:
+                      - Advanced tokenization
+                      - Dependency parsing
+                      - Entity recognition
+                      - Language models
+                  - Size: ~100MB (with models)
+                  - Dependencies: numpy, requests
+              - TextBlob:
+                  - Simple interface to NLTK
+                  - Built-in sentiment analysis
+                  - Size: ~2MB
+                  - Dependencies: NLTK
+          - [x] List libraries for audio processing:
+              - pydub:
+                  - High-level audio processing
+                  - Features:
+                      - Format conversion
+                      - Audio concatenation
+                      - Volume adjustment
+                      - Cross-platform
+                  - Size: ~500KB
+                  - Dependencies: ffmpeg
+              - librosa:
+                  - Advanced audio processing
+                  - Features:
+                      - Spectral analysis
+                      - Pitch detection
+                      - Audio feature extraction
+                  - Size: ~5MB
+                  - Dependencies: numpy, scipy
+              - soundfile:
+                  - Low-level audio I/O
+                  - Features:
+                      - WAV file handling
+                      - Streaming support
+                      - Sample-rate conversion
+                  - Size: ~200KB
+                  - Dependencies: cffi
+
+---
+
+## Architecture & Design
+
+- [x] **Define High-Level Architecture**
+  - [x] Create high-level diagram illustrating:
+      - CLI Frontend:
+          - Input handling:
+              - Text file validation
+              - Model parameter parsing
+          - Error reporting
+          - Progress display
+      - Text Processing Module:
+          - File I/O handler
+          - Tokenization engine
+          - Text normalization pipeline
+          - Segmentation manager
+      - Emotion Analysis Module:
+          - Lexical analyzer
+          - Sentiment processor
+          - Sarcasm detector
+          - Feature extractor
+          - Emotion profile generator
+      - Audio Generation Module:
+          - TTS engine interface
+          - Prosody controller
+          - Audio segment manager
+          - Output formatter
+      - Integration & Orchestration Layer:
+          - Pipeline coordinator
+          - State manager
+          - Error handler
+          - Event logger
+  - [x] Document data flow between components:
+      1. CLI Frontend → Text Processing:
+          - Raw text file path
+          - Configuration parameters
+          - Processing options
+      2. Text Processing → Emotion Analysis:
+          - Segmented text chunks
+          - Metadata (position, context)
+          - Normalized content
+      3. Emotion Analysis → Audio Generation:
+          - Emotion profiles per segment
+          - Confidence scores
+          - Prosody instructions
+      4. Audio Generation → CLI Frontend:
+          - Generated audio segments
+          - Processing status
+          - Quality metrics
+      5. Integration Layer ↔ All Components:
+          - State updates
+          - Error messages
+          - Progress information
+          - Configuration updates
+- [x] **Define Module Interfaces & Data Structures**
+  - [x] Specify input/output formats for each module:
+      - CLI Frontend:
+          - Input:
+              - text_path: str (absolute path)
+              - model_name: str (optional)
+              - config: Dict[str, Any] (optional)
+          - Output:
+              - success: bool
+              - audio_path: str
+              - processing_stats: Dict[str, float]
+      
+      - Text Processing Module:
+          - Input:
+              - text_path: str
+              - config: TextProcessingConfig
+          - Output:
+              - segments: List[TextSegment]
+              - metadata: SegmentationMetadata
+      
+      - Emotion Analysis Module:
+          - Input:
+              - segments: List[TextSegment]
+              - context: AnalysisContext
+          - Output:
+              - emotion_profiles: List[EmotionProfile]
+              - analysis_metadata: AnalysisMetadata
+      
+      - Audio Generation Module:
+          - Input:
+              - text_segments: List[TextSegment]
+              - emotion_profiles: List[EmotionProfile]
+              - tts_config: TTSConfig
+          - Output:
+              - audio_segments: List[AudioSegment]
+              - generation_metadata: AudioMetadata
+
+  - [x] Document structure for intermediate emotion profiles:
+      - EmotionProfile:
+          - segment_id: str
+          - text_reference: TextSegment
+          - basic_sentiment:
+              - polarity: float (-1.0 to 1.0)
+              - objectivity: float (0.0 to 1.0)
+          - complex_emotions:
+              - emotion_type: str
+              - intensity: float (0.0 to 1.0)
+              - confidence: float (0.0 to 1.0)
+          - sarcasm_indicators:
+              - probability: float (0.0 to 1.0)
+              - features: List[str]
+          - prosody_markers:
+              - speed_factor: float
+              - pitch_shift: float
+              - volume_adjust: float
+              - emphasis_points: List[EmphasisMarker]
+          - metadata:
+              - timestamp: datetime
+              - model_version: str
+              - processing_time: float
+- [x] **Design Error Handling and Logging Strategy**
+  - [x] Outline error propagation between modules:
+      - Custom Exception Hierarchy:
+          - PyProsodyBaseException
+              - ConfigurationError
+              - InputValidationError
+              - ProcessingError
+                  - TextProcessingError
+                  - EmotionAnalysisError
+                  - AudioGenerationError
+              - ResourceError
+                  - ModelLoadError
+                  - MemoryError
+              - PipelineError
+      
+      - Error Handling Flow:
+          - Local handling:
+              - Recoverable errors: retry logic
+              - Non-recoverable: clean up and propagate
+          - Module-level handling:
+              - Error aggregation
+              - State preservation
+              - Resource cleanup
+          - Pipeline-level handling:
+              - Global error states
+              - Graceful degradation options
+              - Recovery procedures
+  
+  - [x] Define logging standards:
+      - Logging Levels:
+          - DEBUG: Detailed debugging information
+          - INFO: General operational events
+          - WARNING: Unexpected but handled issues
+          - ERROR: Serious issues requiring attention
+          - CRITICAL: System-breaking issues
+      
+      - Context Information:
+          - Timestamp (UTC)
+          - Module identifier
+          - Process/Thread ID
+          - Operation context
+          - Input/Output states
+      
+      - Implementation Standards:
+          - Structured logging format (JSON)
+          - Correlation IDs for request tracking
+          - Performance metrics inclusion
+          - Stack trace preservation
+          - Sensitive data masking
+- [x] **Plan for Extensibility**
+  - [x] Identify areas for additional analysis modules:
+      - Emotion Analysis Extensions:
+          - New emotion models
+          - Additional language support
+          - Custom emotion taxonomies
+          - Domain-specific analyzers
+      - Text Processing Extensions:
+          - Custom tokenizers
+          - Additional language preprocessors
+          - Specialized text cleaners
+          - Custom segmentation rules
+      - Audio Generation Extensions:
+          - New TTS engines
+          - Custom voice models
+          - Alternative audio formats
+          - Prosody rule sets
+      - Pipeline Extensions:
+          - Custom preprocessing steps
+          - Post-processing filters
+          - Alternative output formats
+          - Caching mechanisms
+  
+  - [x] Design plug-and-play interface:
+      - Module Registry System:
+          - Dynamic module discovery
+          - Version compatibility checking
+          - Dependency resolution
+          - Configuration validation
+      
+      - Plugin Architecture:
+          - Base classes for each module type
+          - Standard interface definitions
+          - Event hooks and callbacks
+          - Resource management protocols
+      
+      - Configuration System:
+          - Plugin-specific settings
+          - Dynamic configuration loading
+          - Environment-based configs
+          - Override mechanisms
+      
+      - Integration Points:
+          - Pre/post processing hooks
+          - Custom pipeline stages
+          - Error handling extensions
+          - Monitoring interfaces
+
+---
+
+## Implementation
+
+### CLI Development
+
+- [x] **Build the CLI Interface**
+  - [x] Set up the project structure with a main entry script.
+  - [x] Use `argparse` to define command-line arguments:
+    - [x] Mandatory text file input.
+    - [x] Optional model parameter with a default value.
+  - [x] Implement input validation:
+    - [x] Check if the text file exists and is readable.
+    - [x] Validate the format of the optional model argument.
+
+### Text Processing Module
+
+- [x] **Implement Text Reading**
+  - [x] Develop a function to read the input text file.
+  - [x] Add error handling for file I/O issues.
+- [x] **Segment the Text**
+  - [x] Tokenize the text into paragraphs, sentences, and phrases using NLTK/spaCy.
+  - [x] Validate segmentation accuracy with sample texts.
+- [x] **Preprocess Text Segments**
+  - [x] Normalize text (e.g., handle punctuation, lowercasing if necessary).
+  - [x] Prepare text segments for further emotion analysis (trim spaces, handle special characters).
+
+### Emotion Analysis Module
+
+- [x] **Lexical Analysis**
+  - [x] Integrate sentiment dictionaries (AFINN, SentiWordNet).
+  - [x] Develop functions to compute basic sentiment scores for each text segment.
+  - [x] Write tests to validate sentiment scoring.
+- [x] **Sentiment & Contextual Analysis Using Local AI Models**
+  - [x] Integrate a pre-trained model (e.g., DistilBERT from Hugging Face) for sentiment analysis.
+  - [ ] Fine-tune the model on domain-specific data if available.
+  - [x] Develop a function to extract contextual sentiment scores.
+  - [x] Validate the model output with predefined examples.
+- [x] **Sarcasm and Irony Detection**
+  - [x] Research rule-based heuristics for sarcasm/irony detection.
+  - [x] Develop detection functions that work alongside AI model outputs.
+  - [x] Test these functions using examples known for sarcasm or irony.
+- [x] **Pragmatic and Discourse Analysis**
+  - [x] Identify features relevant for pragmatic analysis (e.g., discourse markers, punctuation patterns).
+  - [x] Develop a feature engineering pipeline to generate additional emotion indicators.
+  - [x] Validate feature outputs with manual analysis on sample text.
+- [x] **Combine Emotion Outputs**
+  - [x] Design a merging function that combines results from:
+    - [x] Lexical analysis.
+    - [x] AI sentiment/contextual analysis.
+    - [x] Sarcasm/irony detection.
+    - [x] Pragmatic/discourse analysis.
+  - [x] Create test cases to ensure the combined emotion profile is accurate and robust.
+
+### Audio Generation Module
+
+- [x] **Integrate the TTS Engine**
+  - [x] Install and configure the chosen TTS engine (e.g., Tacotron2 or Glow-TTS) locally.
+  - [x] Develop a function to convert text to speech.
+  - [x] Test TTS conversion with static text inputs.
+- [x] **Develop Prosody Adjustment Mechanism**
+  - [x] Map the combined emotion profile to prosodic parameters:
+    - [x] Define rules for adjusting speed, pitch, and volume.
+  - [x] Implement functions to adjust TTS output parameters dynamically.
+  - [x] Validate the prosody mapping with test audio samples.
+- [x] **Audio Processing and Merging**
+  - [x] Use a library like pydub to:
+    - [x] Merge multiple audio segments into a final audio file.
+    - [x] Ensure smooth transitions between segments.
+  - [x] Write tests to confirm the integrity of the final audio file.
+
+### Integration & Orchestration
+
+- [x] **Develop the Main Pipeline**
+  - [x] Create a main function that:
+    - [x] Reads the input file.
+    - [x] Processes the text (segmentation, normalization).
+    - [x] Runs the emotion analysis module.
+    - [x] Generates the emotion-adjusted TTS audio.
+  - [x] Validate the overall data flow and error handling.
+- [x] **Implement Unified Logging and Error Handling**
+  - [x] Add consistent logging across all modules.
+  - [x] Ensure that errors in any module propagate with sufficient context.
+  - [x] Test the entire pipeline with both expected and erroneous inputs.
+
+---
+
+## Testing & Validation
+
+- [x] **Unit Testing**
+  - [x] Write unit tests for:
+    - [x] CLI input validation.
+    - [x] Text segmentation functions.
+    - [x] Each component of the emotion analysis module.
+        - lexical
+        - contextual
+        - pragmatic
+        - analyzer
+        - combiner
+    - [x] TTS engine output functions.
+- [ ] **Integration Testing**
+  - [x] Create end-to-end tests that process a sample story through the entire pipeline.
+  - [ ] Verify that the final audio output reflects the intended emotion mappings.
+- [ ] **User Testing**
+  - [ ] Gather test user feedback on:
+    - [ ] Clarity and accuracy of emotion detection.
+    - [ ] Naturalness and expressiveness of the generated audio.
+  - [ ] Iterate on the model and mapping parameters based on feedback.
+
+---
+
+## Deployment & Documentation
+
+- [x] **Package the Application**
+  - [x] Set up `setuptools` or `poetry` for packaging.
+  - [x] Create an entry point for the CLI application.
+- [ ] **Develop Documentation**
+  - [ ] Write comprehensive user documentation:
+    - [ ] Installation instructions.
+    - [ ] Usage examples.
+    - [ ] Troubleshooting guide.
+  - [ ] Write developer documentation:
+    - [ ] Code structure and module interaction details.
+    - [ ] Guidelines for extending the application.
+- [ ] **Set Up CI/CD Pipeline**
+  - [ ] Configure automated testing on commit.
+  - [ ] Automate packaging and deployment scripts.
